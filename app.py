@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[12]:
+# In[17]:
 
 
 import pandas as pd
 import numpy as np
+import csv
+import os
 import seaborn as sns
 import gradio as gr
+from PIL import Image
 import joblib
 import xgboost as xgb
 import pickle  # To load the saved model
@@ -17,11 +20,22 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import plotly.graph_objects as go
 import time
-
+from datetime import datetime
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.message import EmailMessage
+from email.mime.image import MIMEImage
+from email.utils import formataddr
+import re
+import plotly.express as px
+from newsapi import NewsApiClient
+import datetime as dt
 import warnings
 warnings.filterwarnings('ignore')  # Suppress warnings
 
 
+# In[18]:
 
 
 # Load transportation cost matrix
@@ -38,7 +52,7 @@ for i in cost_df.index:
             G.add_edge(i, j, weight=cost_df.loc[i, j])
 
 
-# In[14]:
+# In[19]:
 
 
 # Load pre-trained XGBoost regression model
@@ -49,7 +63,7 @@ with open("models/xgb_model.pkl", "rb") as file:
 scaler_X = joblib.load("models/scaler_X.pkl")
 
 
-# In[15]:
+# In[20]:
 
 
 # city mapping with city code
@@ -67,7 +81,7 @@ city_mapping = {
 }
 
 
-# In[16]:
+# In[21]:
 
 
 # Function to animate the shortest path
@@ -113,7 +127,7 @@ def animate_shortest_path(city):
         return None
 
 
-# In[17]:
+# In[22]:
 
 
 # Define prediction function
@@ -239,7 +253,7 @@ def predict_food_demand(city_name, temp, rain, DOW, humidity, air_qua_ind,holida
         required_stat+="Required Food in City: "+str(int(required_food))+" units"
     else:
         required_stat+="Already Stock Available ✅"
-    food_avail_in_food_hub=10345
+    food_avail_in_food_hub=10345 #for example
 
 
     path_info,path_img = animate_shortest_path(city)
@@ -247,7 +261,7 @@ def predict_food_demand(city_name, temp, rain, DOW, humidity, air_qua_ind,holida
     return f"Food Available in Food Hub: {int(food_avail_in_food_hub)} units\nPredicted Food Demand: {int(y_pred)} units\nAvailable Food in City: {int(avail)} units\n"+required_stat,path_info,path_img
 
 
-# In[18]:
+# In[23]:
 
 
 def plot_transportation_network():
@@ -303,7 +317,7 @@ def plot_transportation_network():
     return fig # Return the figure
 
 
-# In[19]:
+# In[24]:
 
 
 def plot_optimized_graph():
@@ -372,12 +386,12 @@ def plot_optimized_graph():
     edge_labels = {(u, v): f"{d['weight']:.1f}" for u, v, d in G.edges(data=True)}
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8, font_color="black", ax=ax)
     
-    ax.set_title("Food Collection Network")
+    ax.set_title("Optimized Food Distribution Network")
     
     return fig
 
 
-# In[20]:
+# In[25]:
 
 
 # Function to evaluate the regression model and generate visualizations
@@ -471,84 +485,1234 @@ def test_xgboost_regression(file):
         # 📍 City Transportation Network
         fig8=plot_transportation_network()
         fig9=plot_optimized_graph()
-        
         return result_text,fig1,fig2,fig3,fig4,fig5,fig6,fig7,fig8,fig9
 
     except Exception as e:
         return f"❌ Error: {str(e)}", None, None, None, None, None, None, None, None, None
 
 
-# In[21]:
+# In[26]:
 
 
-with gr.Blocks(theme="soft") as app:
-    gr.Markdown("# 📊 **Food Demand Prediction Model**")
-    with gr.Tabs():
-        with gr.Tab("Predict Food Demand In A City"):
-            gr.Markdown("Fill Conditions About City **Model Predict Food Demand In The City And Suggest Shortest Path From Food Hub to City**.")
-            with gr.Row():
-                with gr.Column(scale=1):
-                    inputs = [
-                    gr.Dropdown(choices=list(city_mapping.values()), label="Select City", value="Jaipur"),
-                    gr.Slider(minimum=-4.4, maximum=41.3, step=0.1, label="Temperature (°C)", value=18.4),
-                    gr.Slider(minimum=-17.0 , maximum=25.0, step=0.1, label="Rainfall (mm)", value=4.0),
-                    gr.Slider(minimum=0, maximum=6, step=1, label="Day of Week (0=Monday, 6=Sunday)", value=0),
-                    gr.Slider(minimum=20.0, maximum=89.9, step=0.1, label="Humidity (%)", value=54.9),
-                    gr.Slider(minimum=50.0, maximum=199.9, step=0.1, label="Air Quality Index", value=124.9),
-                    gr.Radio(choices=["Yes", "No"], label="Is it a Holiday?", value="No"),
-                    gr.Number(label="Available Food Quantity in city", precision=2)
-                    ]
-                    run_button = gr.Button("🔍 Predict Food In The City ")
-                with gr.Column(scale=2):
-                    outputs = [ gr.Textbox(label="Predicted Food Demand in City"),gr.Textbox(label="Optimal Path Information"), gr.Image(label="Shortest Path Visulization")]
-           
-            run_button.click(fn=predict_food_demand, inputs=inputs, outputs=outputs)
+# --------------Food donation-------------
 
-        with gr.Tab("Model Testing"):
-            gr.Markdown("Upload your test dataset and view **model predictions, residuals, and accuracy metrics**.")
-            
-            with gr.Row():
-                with gr.Column(scale=1):
-                    input_file = gr.File(label="📂 Upload test CSV File")
-                    run_button = gr.Button("🔍 Test Model", variant="primary")
-                
-                with gr.Column(scale=2):
-                    with gr.Group():  # Groups the elements together in a clean section
-                        gr.Markdown("### 📊 **Model Performance Summary**", elem_id="summary_title")
-                        output_text = gr.Markdown(
-                            value="Upload a test file and click **Test Model** to see results.",
-                            elem_id="output_text",
-                        )
-            with gr.Tabs():
-                with gr.Tab("📍 Metrics"):
-                    with gr.Row():
-                        bar_chart = gr.Plot(label="📍 Performance Metrics")
-                
-                with gr.Tab("📍 Visualizations"):
-                    with gr.Row():
-                        scatter_plot = gr.Plot(label="📍 Actual vs Predicted Scatter Plot")
-                        residual_plot = gr.Plot(label="📍 Residual Plot")
-                    with gr.Row():
-                        histogram_plot = gr.Plot(label="📍 Histogram of Residuals")
-                        time_series_plot = gr.Plot(label="📍 Time Series Plot")
-                    with gr.Row():
-                        density_plot = gr.Plot(label="📍 Density Plot")
-                        cost_matrix = gr.Plot(label="📍 Cost Matrix(No Direct Path -> -1)")
-                    with gr.Row():
-                        transportation_network = gr.Plot(label="📍 City Transportation Network")
-                        dm = gr.Plot(label="📍 Food Collection Network")
-        
-            run_button.click(
-               fn=test_xgboost_regression,
-                inputs=[input_file],
-                outputs=[output_text, scatter_plot, residual_plot, histogram_plot, time_series_plot, bar_chart, density_plot, cost_matrix, transportation_network, dm],
+
+# Distance from central hub
+hub_distances = {
+    "Delhi": 1934.0, "Mumbai": 305.2, "Patna": 360.0, "Jaipur": 2039.0,
+    "Kolkata": 1907.0, "Chandigarh": 650.0, "Pune": 397.0,
+    "Bangalore": 631.0, "Lucknow": 1647.0, "Agra":684.0
+}
+
+# CSV file to save donations
+csv_file = "data/donations_food.csv"
+try:
+    with open(csv_file, "x") as f:
+        f.write("Name,Phone,Email,City,Food_Quantity,Date,Distance_From_Hub,Message\n")
+except FileExistsError:
+    pass
+
+
+    
+def send_thank_you_email(to_email, donor_name, food_quantity, city):
+    EMAIL_ADDRESS = "kausar.project2025@gmail.com"
+    EMAIL_PASSWORD = "pafq ijrp djdf ehpd"
+
+    # Create the base message
+    msg = MIMEMultipart('related')
+    msg['Subject'] = "Thanks for Your Food Donation! 💚"
+    msg['From'] = formataddr(("Food Donation Team", EMAIL_ADDRESS))
+    msg['To'] = to_email
+
+    # Create the alternative part for plain text and HTML
+    alt_part = MIMEMultipart('alternative')
+
+    # Plain text version
+    plain_text = f"""\
+Hi {donor_name},
+
+Thank you for donating {food_quantity} units of food from {city}! 💚
+Your generosity is deeply appreciated, and a pickup volunteer will contact you soon.
+
+Together, we fight food waste and hunger. 🙌
+
+- The Food Donation Team
+"""
+    alt_part.attach(MIMEText(plain_text, 'plain'))
+
+    # HTML version with image inline
+    html_content = f"""\
+<html>
+  <body>
+    <p>Hi <b>{donor_name}</b>,</p>
+    <p>Thank you for donating <b>{food_quantity}</b> units of food from <b>{city}</b>! 💚</p>
+    <p>Your generosity is deeply appreciated, and a pickup volunteer will contact you soon.</p>
+    <p>Together, we fight food waste and hunger. 🙌</p>
+    <img src="cid:thanksimg" alt="Thank You Image" style="margin-top:15px; max-width:400px;">
+    <p>— The Food Donation Team</p>
+  </body>
+</html>
+"""
+    alt_part.attach(MIMEText(html_content, 'html'))
+
+    # Attach the alternative part to the main message
+    msg.attach(alt_part)
+
+    # Add the image
+    with open("data/thanks.png", 'rb') as img:
+        img_data = img.read()
+        img_attachment = MIMEImage(img_data)
+        img_attachment.add_header('Content-ID', '<thanksimg>')
+        img_attachment.add_header('Content-Disposition', 'inline', filename='thanks.png')
+        msg.attach(img_attachment)
+
+    # Send the message
+    with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+        smtp.starttls()
+        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        smtp.send_message(msg)
+
+
+def is_valid_email(email):
+    # Basic regex for email validation
+    pattern = r"[^@]+@[^@]+\.[^@]+"
+    return re.match(pattern, email) is not None
+
+
+# Donation Function
+def donate_food(username, phone, email, city, food_quantity, message):
+    if username.strip() == "" or email.strip() == "":
+        return "❗ Please fill out your name and email.", None
+    if not is_valid_email(email):
+        return "❗ Please enter a valid email address.", None
+
+    try:
+        quantity = float(food_quantity)
+        if quantity <= 0:
+            return "❗ Quantity must be a positive number.", None
+    except ValueError:
+        return "❗ Please enter a valid number for quantity.", None
+
+    date = datetime.now().strftime("%Y-%m-%d")
+    distance = hub_distances.get(city, 0.0)
+    pickup_hour = min(int(4 + distance * 0.1), 8)
+    pickup_time = f"{pickup_hour}:00 PM"
+
+    # Save to CSV
+    df = pd.DataFrame([[username, phone, email, city, food_quantity, date, distance, message]],
+                      columns=["Name", "Phone", "Email", "City", "Food_Quantity", "Date", "Distance_From_Hub", "Message"])
+    df.to_csv(csv_file, mode='a', header=False, index=False)
+
+    # Send Thank You Email
+    send_thank_you_email(email, username, food_quantity, city)
+
+    msg = f"""✅ **Thank you, {username}!👏💚**
+You’ve donated **{quantity} units** from **{city}**.
+Pickup man will shortly contact you.
+"""
+    image_path = "data/thanks.png"
+    return msg, image_path
+
+
+# In[27]:
+
+
+# ---------Aunthentication--------
+
+CSV_PATH = "data/users.csv"
+# Ensure CSV exists
+if not os.path.exists(CSV_PATH):
+    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
+    with open(CSV_PATH, "w", newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["USER", "Password", "Email", "Contact", "Address", "Approved"])
+# Load users from CSV
+def load_users_for_auth():
+    users = {}
+    with open(CSV_PATH, mode='r', newline='') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            users[row['USER'].strip()] = {
+                'password': row['Password'],
+                'email': row['Email'],
+                'contact': row['Contact'],
+                'address': row['Address'],
+                'approved': row['Approved'].strip().lower() == 'true'
+            }
+    return users
+
+
+# Login logic
+def login_user(username, password):
+    users = load_users_for_auth()
+
+    if not username or not password:
+        return (
+            "❗ Please enter both username and password.",
+            gr.update(visible=False),
+            gr.update(visible=True),
+            gr.update(visible=False)
+        )
+
+    if username in users:
+        if users[username]['password'] == password:
+            if username.lower() == "admin":
+                return (
+                    "👑 Welcome Admin!",
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                    gr.update(visible=True)
+                )
+            if not users[username]['approved']:
+                return (
+                    "⏳ Your account is pending admin approval.",
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                    gr.update(visible=False)
+                )
+            else:
+                return (
+                    f"✅ Welcome, {username}!",
+                    gr.update(visible=True),
+                    gr.update(visible=False),
+                    gr.update(visible=False)
+                )
+        else:
+            return (
+                "❌ Incorrect password.",
+                gr.update(visible=False),
+                gr.update(visible=True),
+                gr.update(visible=False)
+            )
+    else:
+        return (
+            "⚠️ User does not exist. Please register.",
+            gr.update(visible=False),
+            gr.update(visible=True),
+            gr.update(visible=False)
+        )
+
+# Register logic
+def register_user(username, password, email, contact, address):
+    users = load_users_for_auth()
+    if not all([username, password, email, contact, address]):
+        return "❗ Please fill in all fields."
+
+    if username in users:
+        return "⚠️ This username is already taken."
+    if not is_valid_email(email):
+        return "❗ Please enter a valid email address."
+ 
+
+    with open(CSV_PATH, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([username, password, email, contact, address, "false"])
+
+    return "🆕 Registered successfully! ✅ Now please wait for admin approval and login."
+
+
+# In[28]:
+
+
+# ------Admin Panel--------
+
+
+USER_CSV = "data/users.csv"
+
+# 🔍 Load users from CSV
+def load_users():
+    USER_CSV = "data/users.csv"
+    with open(USER_CSV, newline='') as csvfile:
+        return list(csv.DictReader(csvfile))
+
+
+def get_user_stats():
+    users = load_users()
+    total = len(users)
+    # approved = sum(1 for user in users.values() if str(user.get("approved", False)).lower() == "true")
+    approved = sum(1 for user in users if str(user.get("Approved", "")).lower() == "true")
+
+    pending = total - approved
+    return total, approved, pending
+
+
+# 📋 Get pending usernames
+def get_pending_users():
+    return [u["USER"] for u in load_users() if str(u.get("Approved", "")).lower() != "true"]
+
+
+# 📋 Get all usernames
+# def get_all_usernames():
+#     return [u["USER"] for u in load_users()]
+
+def get_all_usernames():
+    # return list(load_users().keys())
+    return [u["USER"] for u in load_users()]
+
+
+
+
+
+def refresh_stats():
+    pending_users_list=get_pending_users()
+    total, approved, pending = get_user_stats()
+    return (
+        f"<div style='font-size: 30px;'>👥 <strong>Total Users:</strong> {total}</div>",
+        f"<div style='font-size: 30px; color: green;'>✅ <strong>Approved Users:</strong> {approved}</div>",
+        f"<div style='font-size: 30px; color: orange;'>⏳ <strong>Pending Users:</strong> {pending}</div>",
+        draw_pie_chart(),
+        pending_users_list
+    )
+
+# ✅ Approve a user
+def approve_user(username):
+    users = load_users()
+    found = False
+    email = None
+
+    for user in users:
+        if user["USER"] == username:
+            user["Approved"] = "true"
+            found = True
+            email = user.get("Email", "")
+            break
+
+    if found:
+        with open(USER_CSV, 'w', newline='') as csvfile:
+            fieldnames = users[0].keys()
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(users)
+
+        # ✅ Send email after saving to CSV
+        if email:
+            send_approval_email(email, username)
+
+        return (
+            f"✅ Approved {username}!",
+            gr.update(choices=get_pending_users()),
+            draw_pie_chart(),
+            gr.update(choices=get_all_usernames())
+        )
+    else:
+        return (
+            "❌ User not found",
+            gr.update(choices=get_pending_users()),
+            draw_pie_chart(),
+            gr.update(choices=get_all_usernames())
+        )
+
+
+
+# ❌ Reject a user
+def reject_user(username):
+    users = load_users()
+    new_users = [user for user in users if user["USER"] != username]
+
+    if len(new_users) < len(users):
+        with open(USER_CSV, 'w', newline='') as csvfile:
+            fieldnames = new_users[0].keys() if new_users else users[0].keys()
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(new_users)
+        return (
+            f"❌ Rejected {username} (User removed)",
+            gr.update(choices=get_pending_users()),
+            draw_pie_chart(),
+            gr.update(choices=get_all_usernames())
+        )
+    else:
+        return (
+            "⚠️ User not found",
+            gr.update(choices=get_pending_users()),
+            draw_pie_chart(),
+            gr.update(choices=get_all_usernames())
+        )
+
+# 🥧 Draw Pie Chart
+def draw_pie_chart():
+    _, approved, pending = get_user_stats()
+    fig = go.Figure(data=[go.Pie(
+        labels=["Approved", "Pending"],
+        values=[approved, pending],
+        hole=0.4,
+        marker=dict(colors=["#27ae60", "#e67e22"]),
+    )])
+    fig.update_layout(title_text="User Approval Status")
+    return fig
+
+# 👤 Get formatted user details
+def get_user_details(username):
+    users = load_users()
+    for user in users:
+        if user["USER"] == username:
+            approved = user.get("Approved", "N/A").lower()
+            status_badge = (
+                "🟢 <span style='color:limegreen;font-weight:bold'>Approved</span>" if approved == "true"
+                else "🟠 <span style='color:orange;font-weight:bold'>Pending</span>"
             )
 
+            return f"""
+<div style='padding: 16px; border: 1px solid #444; border-radius: 12px; background-color: #f0f0f0; color: #2c3e50; font-family: Arial, sans-serif;'>
+    <h3 style='margin-top: 0;'>👤 <span style="color:#2c3e50;">{user['USER']}</span></h3>
+    <p>📧 <strong style="color:#2c3e50;">Email:</strong> <span style="color:#2c3e50;">{user.get('Email', 'N/A')}</span></p>
+    <p>📞 <strong style="color:#2c3e50;">Contact:</strong> <span style="color:#2c3e50;">{user.get('Contact', 'N/A')}</span></p>
+    <p>🏠 <strong style="color:#2c3e50;">Address:</strong> <span style="color:#2c3e50;">{user.get('Address', 'N/A')}</span></p>
+    <p>🔓  <strong style="color:#2c3e50;">Status:</strong> <span>{status_badge}</span></p>
+</div>
+"""
+    return "<p style='color:red;'>⚠️ User not found</p>"
 
-# In[22]:
 
 
-app.launch(share=True)
+# Delete user logic
+def delete_user(username):
+    users = load_users()
+    updated_users = [u for u in users if u["USER"] != username]
+
+    if len(updated_users) < len(users):
+        with open(USER_CSV, 'w', newline='') as csvfile:
+            fieldnames = updated_users[0].keys()
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(updated_users)
+        return (
+            f"🗑️ Deleted user: {username}",
+            gr.update(choices=get_all_usernames()),
+            gr.update(choices=get_pending_users()),
+            draw_pie_chart()
+        )
+    else:
+        return (
+            "⚠️ User not found.",
+            gr.update(choices=get_all_usernames()),
+            gr.update(choices=get_pending_users()),
+            draw_pie_chart()
+        )
+
+
+#Approval email sendinding logic
+
+EMAIL_ADDRESS = os.getenv("kausar.project2025@gmail.com")
+EMAIL_PASSWORD = os.getenv("pafq ijrp djdf ehpd")
+
+def is_valid_email(email):
+    # Basic regex for email validation
+    pattern = r"[^@]+@[^@]+\.[^@]+"
+    return re.match(pattern, email) is not None
+
+def send_approval_email(to_email, username):
+    msg = EmailMessage()
+    msg['Subject'] = "🎉 Your Account Has Been Approved!"
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = to_email
+    msg.set_content(f"Hi {username},\n\nYour account has been approved by the admin. You can now access the platform.\n\nThanks!")
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        print("❌ Email sending failed:", e)
+        return False
+
+
+# Adding new user logic
+
+def add_new_user(username, password, email, contact, address, approved):
+    if not username or not password:
+        return "⚠️ Username and Password are required."
+    if not is_valid_email(email):
+        return "❗ Please enter a valid email address."
+    
+    users = load_users()
+    if any(u["USER"] == username for u in users):
+        return "❌ Username already exists."
+    
+    new_user = {
+        "USER": username,
+        "Password": password,
+        "Email": email,
+        "Contact": contact,
+        "Address": address,
+        "Approved": "true" if approved=="Yes" else "false"
+    }
+    users.append(new_user)
+    
+    with open(USER_CSV, 'w', newline='') as csvfile:
+        fieldnames = new_user.keys()
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(users)
+    
+    return f"✅ User {username} added successfully!"
+
+
+
+# User updation logi
+def load_user_data(username):
+    users = load_users()
+    for user in users:
+        if user["USER"] == username:
+            return (
+                user.get("Email", ""),
+                user.get("Contact", ""),
+                user.get("Address", ""),
+                user.get("Approved", "false")
+            )
+    return "", "", "", "false"
+    
+
+# Update logic
+def update_user_info(username, email, contact, address, approved):
+    users = load_users()
+    updated = False
+    for user in users:
+        if user["USER"] == username:
+            user["Email"] = email
+            user["Contact"] = contact
+            user["Address"] = address
+            user["Approved"] = "true" if approved=="Yes" else "false"
+            updated = True
+            break
+    
+    if updated:
+        with open(USER_CSV, 'w', newline='') as csvfile:
+            fieldnames = users[0].keys()
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(users)
+        return f"✅ User '{username}' updated successfully."
+    else:
+        return "⚠️ User not found."
+
+
+# logic for displaying food donation details
+# 📦 Load and show recent 5 food donations
+import pandas as pd
+
+DONATION_CSV = "data/donations_food.csv"  # adjust path as needed
+
+def load_recent_donations():
+    df = pd.read_csv(DONATION_CSV)
+    df["Date"] = pd.to_datetime(df["Date"], errors='coerce')
+    recent = df.tail(5)
+
+    html = """
+    <div style='font-family: Arial; padding: 10px;'>
+        <h4 style="margin-bottom:10px;">📦 Recent Food Donations</h4>
+        <table style="width:100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background-color: #2c3e50; color: white;">
+                    <th style="padding: 8px; border: 1px solid #ccc;">👤 Name</th>
+                    <th style="padding: 8px; border: 1px solid #ccc;">📧 Email</th>
+                    <th style="padding: 8px; border: 1px solid #ccc;">📞 Phone</th>
+                    <th style="padding: 8px; border: 1px solid #ccc;">🏙️ City</th>
+                    <th style="padding: 8px; border: 1px solid #ccc;">🍱 Quantity</th>
+                    <th style="padding: 8px; border: 1px solid #ccc;">📅 Date</th>
+                    <th style="padding: 8px; border: 1px solid #ccc;">🗺️ Distance</th>
+                    <th style="padding: 8px; border: 1px solid #ccc;">✉️ Message</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+
+    for _, row in recent.iterrows():
+        html += f"""
+            <tr>
+                <td style="padding: 8px; border: 1px solid #ccc;">{row['Name']}</td>
+                <td style="padding: 8px; border: 1px solid #ccc;">{row['Email']}</td>
+                <td style="padding: 8px; border: 1px solid #ccc;">{row['Phone']}</td>
+                <td style="padding: 8px; border: 1px solid #ccc;">{row['City']}</td>
+                <td style="padding: 8px; border: 1px solid #ccc;">{row['Food_Quantity']}</td>
+                <td style="padding: 8px; border: 1px solid #ccc;">{row['Date'].strftime('%Y-%m-%d')}</td>
+                <td style="padding: 8px; border: 1px solid #ccc;">{row['Distance_From_Hub']}</td>
+                <td style="padding: 8px; border: 1px solid #ccc;">{row.get('Message', 'N/A')}</td>
+            </tr>
+        """
+
+    html += "</tbody></table></div>"
+    return html
+
+
+
+
+# In[29]:
+
+
+# Dashboard
+# Load the CSV data
+df = pd.read_csv('data/donations.csv')
+
+# Clean data - remove duplicates
+df = df.drop_duplicates()
+
+# Calculate metrics
+total_donations = df['food_quantity'].sum()
+unique_cities = df['city'].nunique()
+unique_donors = df['username'].nunique()
+avg_distance = df['distance_from_hub'].mean()
+
+# Function to create city-wise donations chart
+def create_city_donations_chart():
+    city_donations = df.groupby('city')['food_quantity'].sum().reset_index()
+    city_donations = city_donations.sort_values(by='food_quantity', ascending=False)
+    
+    fig = px.bar(
+        city_donations, 
+        x='city', 
+        y='food_quantity',
+        color='food_quantity',
+        color_continuous_scale='Viridis',
+        title='Food Donations by City',
+        labels={'food_quantity': 'Food Quantity (kg)', 'city': 'City'}
+    )
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#333333'),
+        margin=dict(l=20, r=20, t=40, b=20),
+        coloraxis_showscale=False
+    )
+    return fig
+
+# Function to create donor distribution pie chart
+def create_donor_distribution():
+    donor_counts = df.groupby('username').size().reset_index(name='count')
+    donor_counts = donor_counts.sort_values(by='count', ascending=False)
+    
+    # Take top 5 donors and group others
+    if len(donor_counts) > 5:
+        top_donors = donor_counts.iloc[:5]
+        others_count = donor_counts.iloc[5:]['count'].sum()
+        top_donors = pd.concat([top_donors, pd.DataFrame([['Others', others_count]], columns=['username', 'count'])])
+        donor_counts = top_donors
+    
+    fig = px.pie(
+        donor_counts, 
+        values='count', 
+        names='username',
+        title='Top Donors Distribution',
+        color_discrete_sequence=px.colors.qualitative.Set3
+    )
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#333333'),
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    return fig
+
+# Function to create distance vs quantity scatter plot
+def create_distance_quantity_scatter():
+    fig = px.scatter(
+        df, 
+        x='distance_from_hub', 
+        y='food_quantity',
+        color='city',
+        title='Food Quantity vs Distance',
+        labels={'food_quantity': 'Food Quantity (kg)', 'distance_from_hub': 'Distance from Hub (km)'},
+        hover_data=['username', 'city']
+    )
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#333333'),
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    return fig
+
+# Function to create a gauge chart for monthly target
+def create_gauge_chart():
+    monthly_target = 100  # Example target
+    current_progress = min(total_donations / monthly_target * 100, 100)
+    
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = current_progress,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': "Monthly Target Progress (%)"},
+        gauge = {
+            'axis': {'range': [None, 100]},
+            'bar': {'color': "#2E8B57"},
+            'steps': [
+                {'range': [0, 50], 'color': "#FFEBEE"},
+                {'range': [50, 75], 'color': "#FFCCBC"},
+                {'range': [75, 100], 'color': "#C8E6C9"}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': 90
+            }
+        }
+    ))
+    
+    fig.update_layout(
+        height=300,
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#333333'),
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+    return fig
+
+# Create a table of recent donations
+def create_recent_donations_table():
+    recent_df = df.sort_values(by='date', ascending=False).head(5)
+    recent_df = recent_df[['username', 'city', 'food_quantity', 'date']]
+    return recent_df.rename(columns={
+        'username': 'Donor', 
+        'city': 'City', 
+        'food_quantity': 'Amount (kg)', 
+        'date': 'Date'
+    })
+
+# Define the upcoming cities (from your example)
+upcoming_cities = ["Gurgaon", "Ludhiana", "Chennai", "Ranchi", "Surat", "Hyderabad", "Patna", "Lucknow", "Nagpur", "Kanpur"]
+
+# Define About Us content
+about_us_content = """
+# About Food Donation Network
+
+Our mission is to connect food donors with people in need to reduce food waste and fight hunger. 
+We operate in multiple cities across India, building a network of donors, volunteers, and beneficiaries.
+
+## Our Impact
+
+- **12,345+** food units donated
+- **10** cities served
+- **4** teams deployed
+- **100+** families supported monthly
+
+## How It Works
+
+1. **Donate**: Register as a donor and list available food
+2. **Connect**: We match your donation with nearby recipients
+3. **Deliver**: Our volunteers ensure safe and timely delivery
+
+Join our mission to build a hunger-free society!
+"""
+
+
+# In[30]:
+
+
+# News Section
+
+# ✅ Your NewsAPI key here
+NEWSAPI_KEY = "0d64617d281a40abb4bf15ea7b47c577"
+newsapi = NewsApiClient(api_key=NEWSAPI_KEY)
+
+# Keywords for relevant news
+search_keywords = ["food crisis", "food shortage", "disaster", "drought", "hunger", "emergency aid"]
+
+def get_food_crisis_news():
+    query = " OR ".join(search_keywords)
+    try:
+        top_headlines = newsapi.get_everything(q=query,
+                                               language='en',
+                                               sort_by='publishedAt',
+                                               page_size=5)
+        articles = top_headlines['articles']
+        if not articles:
+            return "🚨 No urgent food-related news found right now."
+
+        result = ""
+        for a in articles:
+            published = dt.datetime.strptime(a['publishedAt'], "%Y-%m-%dT%H:%M:%SZ")
+            result += f"""
+<div class='news-item'>
+  <strong>{a['title']}</strong><br>
+  📅 {published.strftime('%b %d, %Y %H:%M')}<br>
+  🌍 Source: {a['source']['name']}<br>
+  <a href="{a['url']}" target="_blank" class='news-link'>🔗 Read Full Article</a>
+</div>
+"""
+        return result
+    except Exception as e:
+        return f"❌ Error fetching news: {e}"
+
+
+# In[31]:
+
+
+# Gradio Interface
+
+with gr.Blocks(gr.themes.Ocean(),css="""
+.news-item {
+  display: block;
+  padding: 10px;
+  border-bottom: 1px solid #ccc;
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+.news-link {
+  background-color: #1f6feb;
+  color: white;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  display: inline-block;
+  margin-top: 6px;
+}
+.news-link:hover {
+  background-color: #174ea6;
+}
+""") as app:
+    
+    gr.Markdown("# 📊 **Food Demand Prediction And Donation Plateform**")
+    with gr.Column(visible=False) as app_section:
+        with gr.Row():
+            gr.Markdown("**Food Demand Predictor:** Accurately forecasts food quantity needs using real-time data and AI models.")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+    
+        with gr.Row():
+            gr.Image(value="data/1.jpeg", label="Image 1", show_label=False)
+            gr.Image(value="data/3.jpeg", label="Image 2", show_label=False)
+            gr.Image(value="data/2.jpeg", label="Image 3", show_label=False)
+    
+    
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+    
+        with gr.Row():
+            gr.Markdown("The **Food Demand Prediction Model** is an innovative machine learning-driven solution designed to optimize and enhance the process of food donation in underserved communities. Byleveraging data analytics, predictive modeling, and real-time information, this project aims to reduce food waste while increasing the efficiency and reach of food donations to areas in need.")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+        # with gr.Row():
+        #     gr.Markdown("**Smart Giving, Zero Waste, Full Plates! 🍽️🥞🍱**")
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("")
+            with gr.Column():
+                gr.Markdown("**Smart Giving, Zero Waste, Full Plates! 🍽️🥞🍱**")
+            with gr.Column():
+                gr.Markdown("")
+        
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+        with gr.Row():
+            gr.Markdown("")
+
+        # Food Demand prediction tab
+        with gr.Tabs():
+            with gr.Tab("Predict Food Demand In A City"):
+                gr.Markdown("Fill Conditions About City **Model Predict Food Demand In The City And Suggest Shortest Path From Food Hub to City**.")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        inputs = [
+                        gr.Dropdown(choices=list(city_mapping.values()), label="Select City", value="Jaipur"),
+                        gr.Slider(minimum=-4.4, maximum=41.3, step=0.1, label="Temperature (°C)", value=18.4),
+                        gr.Slider(minimum=-17.0 , maximum=25.0, step=0.1, label="Rainfall (mm)", value=4.0),
+                        gr.Slider(minimum=0, maximum=6, step=1, label="Day of Week (0=Monday, 6=Sunday)", value=0),
+                        gr.Slider(minimum=20.0, maximum=89.9, step=0.1, label="Humidity (%)", value=54.9),
+                        gr.Slider(minimum=50.0, maximum=199.9, step=0.1, label="Air Quality Index", value=124.9),
+                        gr.Radio(choices=["Yes", "No"], label="Is it a Holiday?", value="No"),
+                        gr.Number(label="Available Food Quantity in city", precision=2)
+                        ]
+                        run_button = gr.Button("🔍 Predict Food In The City ", variant="primary")
+                    with gr.Column(scale=2):
+                        outputs = [ gr.Textbox(label="Predicted Food Demand in City"),gr.Textbox(label="Optimal Path Information"), gr.Image(label="Shortest Path Visulization")]
+               
+                run_button.click(fn=predict_food_demand, inputs=inputs, outputs=outputs)
+                
+            # Food donation tab
+            with gr.Tab("Food Donation Portal"):
+                gr.Markdown("Help reduce food waste by donating your surplus food!🍱")
+                with gr.Row():
+                    username = gr.Textbox(label="Your Name", placeholder="Enter your name")
+                    phone = gr.Textbox(label="Contact Number", placeholder="e.g. 9876543210")
+                with gr.Row():
+                    email = gr.Textbox(label="Email", placeholder="Enter your email")
+                    city = gr.Dropdown(label="Select City", choices=list(hub_distances.keys()))
+                with gr.Row():
+                    quantity = gr.Textbox(label="Food Quantity (in units)", placeholder="e.g. 10 or 12.5")
+                    message = gr.Textbox(label="Your Message to us ")
+                with gr.Row():
+                    with gr.Column():
+                        donate_btn = gr.Button("Donate Now ✅",variant="primary")
+                        output_msg = gr.Markdown()
+                        gr.Markdown("### ❤️ What Donors Are Saying:")
+                        gr.Markdown("""
+                         - “Great initiative! 💚 — Ayesha”
+                         - “Happy to help! 🍱 — Rahul”
+                         - “Feels good to give back 🙌 — Meera”
+                         - “Proud to contribute 👏 — Arjun”
+                         - “Donated from my hostel! 😇 — Tanvi”
+                        """)
+                    with gr.Column():
+                        thanks_img=gr.Image(label="Image", show_label=False)
+
+                donate_btn.click(
+                    fn=donate_food,
+                    inputs=[username,phone, email, city, quantity ,message],
+                    outputs=[output_msg,thanks_img]
+                )
+        
+                     
+
+            # dashboard tab
+            with gr.Tab("Dashboard"):
+                gr.Markdown(
+                    """
+                    # Food Donation Dashboard
+                    A live summary of our impact and upcoming missions.
+                    """
+                )
+                # Top metrics
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("## 🏙️ Cities Served")
+                        gr.Markdown(f"### {unique_cities}")
+                    with gr.Column():
+                        gr.Markdown("## 👥 People Connected")
+                        gr.Markdown(f"### {unique_donors}")
+                    with gr.Column():
+                        gr.Markdown("## 🍲 Food Units Donated")
+                        gr.Markdown(f"### {total_donations:.0f} kg")
+                    with gr.Column():
+                        gr.Markdown("## 📍 Avg. Distance")
+                        gr.Markdown(f"### {avg_distance:.1f} km")
+
+                # Main dashboard content
+                with gr.Tabs():
+                    with gr.TabItem("Dashboard"):
+                        with gr.Row():
+                            with gr.Column(scale=2):
+                                gr.Markdown("### Food Donations by City")
+                                city_chart = gr.Plot(value=create_city_donations_chart())
+                            with gr.Column(scale=1):
+                                gr.Markdown("### Monthly Target")
+                                gauge_chart = gr.Plot(value=create_gauge_chart())
+                
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("### Donor Distribution")
+                                donor_pie = gr.Plot(value=create_donor_distribution())
+                            with gr.Column():
+                                gr.Markdown("### Food Quantity vs Distance")
+                                scatter_plot = gr.Plot(value=create_distance_quantity_scatter())
+                
+                        with gr.Row():
+                            with gr.Column():
+                                gr.Markdown("### Recent Donations")
+                                recent_table = gr.DataFrame(value=create_recent_donations_table())
+                            with gr.Column():
+                                gr.Markdown("### Upcoming Cities to Connect")
+                                gr.Markdown(", ".join(upcoming_cities))
+
+
+                    with gr.TabItem("Map View"):
+                        gr.Markdown("### Donation Locations")
+                        # Display a local image instead of fetching from URL
+                        gr.Image(value=r"data/map.webp", label="Distribution Map")
+                
+                        gr.Markdown("### Distribution Hubs")
+                        with gr.Row():
+                            for city in df['city'].unique()[:4]:
+                                with gr.Column():
+                                    gr.Markdown(f"#### {city} Hub")
+                                    gr.Markdown(f"Total Donations: **{df[df['city'] == city]['food_quantity'].sum():.1f} kg**")
+                                    gr.Markdown(f"Active Donors: **{df[df['city'] == city]['username'].nunique()}**")
+    
+
+                
+          
+                        with gr.TabItem("About Us"):
+                            with gr.Row():
+                                with gr.Column():
+                                    gr.Markdown(about_us_content)
+                                with gr.Column():
+                                    gr.Image(value=r"data/teampic.jpg", label="Our Team")
+    
+                            gr.Markdown("### Contact Us")
+                            with gr.Row():
+                                name_input = gr.Textbox(label="Your Name")
+                                contact_input = gr.Textbox(label="Contact Number")
+                            message_input = gr.Textbox(label="Message to Us", lines=3)
+                            submit_btn = gr.Button("Submit")
+                
+                            submit_btn.click(
+                                fn=lambda name, contact, message: gr.Markdown(f"Thank you {name}! We'll get back to you soon."),
+                                inputs=[name_input, contact_input, message_input],
+                                outputs=gr.Markdown()
+                            )
+
+                gr.Markdown(f"© {datetime.now().year} Food Donation Network. Data last updated: {datetime.now().strftime('%Y-%m-%d')}")      
+           
+            with gr.Tab("Current News"):
+                gr.Markdown("## 🌍 Global Food Crisis & Disaster Alerts")
+                news_box = gr.HTML(value=get_food_crisis_news(), elem_id="news-output")
+                gr.Button("🔄 Refresh News",variant="primary").click(fn=get_food_crisis_news, outputs=news_box)
+
+            # model testing tab
+            with gr.Tab("Model Testing"):
+                gr.Markdown("Upload your test dataset and view **model predictions, residuals, and accuracy metrics**.")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        input_file = gr.File(label="📂 Upload test CSV File")
+                        run_button = gr.Button("🔍 Test Model", variant="primary")
+                    
+                    with gr.Column(scale=2):
+                        with gr.Group():  # Groups the elements together in a clean section
+                            gr.Markdown("### 📊 **Model Performance Summary**", elem_id="summary_title")
+                            output_text = gr.Markdown(
+                                value="Upload a test file and click **Test Model** to see results.",
+                                elem_id="output_text",
+                            )
+                with gr.Tabs():
+                    with gr.Tab("📍 Metrics"):
+                        with gr.Row():
+                            bar_chart = gr.Plot(label="📍 Performance Metrics")
+                    
+                    with gr.Tab("📍 Visualizations"):
+                        with gr.Row():
+                            scatter_plot = gr.Plot(label="📍 Actual vs Predicted Scatter Plot")
+                            residual_plot = gr.Plot(label="📍 Residual Plot")
+                        with gr.Row():
+                            histogram_plot = gr.Plot(label="📍 Histogram of Residuals")
+                            time_series_plot = gr.Plot(label="📍 Time Series Plot")
+                        with gr.Row():
+                            density_plot = gr.Plot(label="📍 Density Plot")
+                            cost_matrix = gr.Plot(label="📍 Cost Matrix(No Direct Path -> -1)")
+                        with gr.Row():
+                            transportation_network = gr.Plot(label="📍 City Transportation Network")
+                            dm = gr.Plot(label="📍 City Transportation Network")
+            
+                run_button.click(
+                   fn=test_xgboost_regression,
+                    inputs=[input_file],
+                    outputs=[output_text, scatter_plot, residual_plot, histogram_plot, time_series_plot, bar_chart, density_plot, cost_matrix, transportation_network, dm],
+                )
+            
+    with gr.Column(visible=True) as login_register_section:
+        with gr.Tab("Login"):
+            with gr.Row():
+                with gr.Column(scale=2):
+                    login_user_input = gr.Textbox(label="Username")
+                    login_pass_input = gr.Textbox(label="Password", type="password")
+                    login_btn = gr.Button("Login", variant="primary")
+                    login_msg = gr.Textbox(label="", interactive=False)
+                with gr.Column(scale=1):
+                    # gr.Markdown("hello world")
+                    gr.Image(value="data/login.jpeg", label="Image", show_label=False)
+        with gr.Tab("Register"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    reg_user = gr.Textbox(label="Username")
+                    reg_pass = gr.Textbox(label="Password", type="password")
+                    reg_email = gr.Textbox(label="Email")
+                    reg_contact = gr.Textbox(label="Contact Number")
+                    reg_address = gr.Textbox(label="Address")
+                    register_btn = gr.Button("Register", variant="primary")
+                    register_msg = gr.Textbox(label="")
+                with gr.Column(scale=1):
+                    # gr.Markdown("hello world")
+                    gr.Image(value="data/login.jpeg", label="Image", show_label=False)
+                
+    with gr.Column(visible=False) as admin_panel:
+        gr.Markdown("## 🛠️ Admin Panel")
+        with gr.Row():
+            with gr.Column(scale=1):
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                     # 📈 Stats + Chart
+                    total_users = gr.Markdown()
+                    approved_users = gr.Markdown()
+                    pending_users = gr.Markdown()
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                    gr.Markdown("")
+                with gr.Row():
+                    gr.Markdown("")
+    
+                with gr.Row():
+                    refresh_btn = gr.Button("🔄 Refresh Stats",variant="primary")
+            with gr.Column(scale=1):
+                pie_chart = gr.Plot(label="User Approval Chart")
+
+    
+        # refresh_btn.click(refresh_stats, outputs=[total_users, approved_users, pending_users, pie_chart])
+        # app.load(refresh_stats, outputs=[total_users, approved_users, pending_users, pie_chart])
+
+
+
+        
+        with gr.Row():
+            with gr.Column():
+                # ✅ Approve / ❌ Reject section
+                gr.Markdown("### ⚙️ Approve / Reject Users")
+                pending_users_list = gr.Dropdown(choices=get_pending_users(), label="Pending Users")
+                with gr.Row():
+                    approve_btn = gr.Button("✅ Approve", variant="primary")
+                    reject_btn = gr.Button("❌ Reject", variant="primary")
+                admin_output = gr.Markdown()
+    
+
+                
+            with gr.Column():
+                # 👁️ View User Details
+                # gr.Markdown("---")
+                gr.Markdown("### 🔍 View User Details")
+                user_detail_dropdown = gr.Dropdown(choices=get_all_usernames(), label="Select User")
+                user_detail_output = gr.HTML()
+            
+                user_detail_dropdown.change(fn=get_user_details, inputs=user_detail_dropdown, outputs=user_detail_output)
+                
+        refresh_btn.click(refresh_stats, outputs=[total_users, approved_users, pending_users, pie_chart,pending_users_list])
+        app.load(refresh_stats, outputs=[total_users, approved_users, pending_users, pie_chart,pending_users_list])
+
+        approve_btn.click(
+        fn=approve_user,
+        inputs=pending_users_list,
+        outputs=[admin_output, pending_users_list, pie_chart, pending_users_list]
+        )
+
+        reject_btn.click(
+            fn=reject_user,
+            inputs=pending_users_list,
+            outputs=[admin_output, pending_users_list, pie_chart, pending_users_list]
+        )
+        
+        # ➕ Add New User
+        gr.Markdown("### ➕ Add New User")
+        with gr.Row():
+            new_username = gr.Textbox(label="Username")
+            new_password = gr.Textbox(label="Password", type="password")  # <-- added
+        with gr.Row():
+            new_email = gr.Textbox(label="Email")
+            new_contact = gr.Textbox(label="Contact")
+        with gr.Row():
+            new_address = gr.Textbox(label="Address")
+            new_approved = gr.Radio(choices=["Yes", "No"], label="Approved?", value="No")
+    
+        with gr.Row():
+            with gr.Column():
+                add_user_btn = gr.Button("➕ Add User", variant="primary")
+            with gr.Column():
+                add_user_output = gr.Markdown()   
+    
+                
+        add_user_btn.click(
+            fn=add_new_user,
+            inputs=[new_username, new_password, new_email, new_contact, new_address, new_approved],
+            outputs=add_user_output
+        )
+
+        # Update user details
+        gr.Markdown("---")
+        gr.Markdown("### ✏️ Update User Information")  
+        # Dropdown to select user
+        update_user_dropdown = gr.Dropdown(choices=get_all_usernames(), label="Select User to Update")
+    
+        # Editable input fields
+        update_email = gr.Textbox(label="Email")
+        update_contact = gr.Textbox(label="Contact")
+        update_address = gr.Textbox(label="Address")
+        update_status = gr.Radio(choices=["Yes", "No"], label="Approved", value="No")
+        
+        with gr.Row():
+            with gr.Column():
+                update_btn = gr.Button("💾 Update User", variant="primary")
+        with gr.Row():
+            with gr.Column():
+                update_message = gr.Markdown()
+                
+        update_user_dropdown.change(
+        load_user_data,
+        inputs=update_user_dropdown,
+        outputs=[update_email, update_contact, update_address, update_status]
+        )
+        
+        update_btn.click(
+            update_user_info,
+            inputs=[update_user_dropdown, update_email, update_contact, update_address, update_status],
+            outputs=update_message
+        )
+
+        # Delete input fields
+        gr.Markdown("### 🗑️ Delete Any User")
+        
+        delete_user_dropdown = gr.Dropdown(choices=get_all_usernames(), label="Select User to Delete")
+    
+        delete_user_btn = gr.Button("Delete User", variant="primary")
+
+        delete_user_output = gr.Textbox(label="", interactive=False)
+        
+        delete_user_btn.click(
+            fn=delete_user,
+            inputs=delete_user_dropdown,
+            outputs=[delete_user_output, user_detail_dropdown, pending_users_list, pie_chart]
+        )
+        gr.Markdown("---")
+        gr.Markdown("### 🥗 Recent Food Donations (Latest 5)")
+        
+        donation_display = gr.HTML()
+        donation_refresh = gr.Button("🔄 Refresh Donations",variant="primary")
+        
+        donation_refresh.click(fn=load_recent_donations, outputs=donation_display)
+        app.load(load_recent_donations, outputs=donation_display)
+
+
+    login_btn.click(
+        fn=login_user,
+        inputs=[login_user_input, login_pass_input],
+        outputs=[login_msg, app_section, login_register_section, admin_panel]
+    )
+
+    register_btn.click(
+        fn=register_user,
+        inputs=[reg_user, reg_pass, reg_email, reg_contact, reg_address],
+        outputs=register_msg
+    )
+
+
+# In[32]:
+
+
+app.launch()
+
+
+# In[ ]:
+
+
+
 
 
 # In[ ]:

@@ -1,0 +1,19 @@
+USER,Password,Email,Contact,Address,Approved
+admin,password123,,,,true
+kausar,jak,won@gmail.com,876567,delhi,true
+user,jar,wqid@gmail.com,8765,hhhh,true
+khan,woufw,wjqnd,wiudb,wqjd ,true
+kanha,kanha,kanha@gmail.com,09876543211,gohati,true
+sachin,sachin,sachin@gmail.com,6765748392,jaipur,true
+pavan,pavan,mohd.ksr2003@gmail.com,4576543,delhi,true
+pavankumar,pavan,mohd.ksr2003@gmail.com,4576543,delhi,true
+gffar1,gaffar,khansibu527@gmail.com,7023315900,pune,true
+arshad,gaffar,khansibu527@gmail.com,7023315900,pune,true
+khan kausar,skgud,qwjdv@gmail.com,8765432,shjadv,false
+jai,jai,mohd.ksr2003@gmail.com,9660573048,delhi,true
+saif,saif,s@gmail.com,987654345,delhi,true
+kasif,kasif,k@gmial.com,8765456788,jaipur,false
+rohit,rohit,rohit@gmail.com,9872628789,Pune,false
+Jay,Jay,jai@gmail.com,987262764,Delhi,false
+mohit,mohit123,mohit@gmail.com,987637823,Delhi,false
+naveen,naveen,bn@gmail.com,848893234,delhi,false
